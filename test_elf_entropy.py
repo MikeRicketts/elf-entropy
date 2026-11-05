@@ -552,21 +552,27 @@ class CLITests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("not", out)
 
-    def test_symlinks_and_hard_links_scanned_once(self):
+    def test_symlinks_not_followed(self):
         try:
             os.symlink(self.clean, os.path.join(self.tmp.name, "link.elf"))
         except (OSError, NotImplementedError):
             self.skipTest("can't create symlinks here")
+        _code, out = self.run_cli("-s", "-r", self.tmp.name)
+        self.assertNotIn("link.elf", out)
+        self.assertIn("clean.elf", out)
+
+    def test_hard_links_scanned_once(self):
         try:
             os.link(self.clean, os.path.join(self.tmp.name, "hard.elf"))
-        except OSError:
-            pass
-        code, out = self.run_cli("-s", "-r", self.tmp.name)
-        self.assertNotIn("link.elf", out)
-        lines = [line for line in out.splitlines()
-                 if "clean.elf" in line or "hard.elf" in line]
-        if os.stat(self.clean).st_ino:
-            self.assertEqual(len(lines), 1)
+        except (OSError, NotImplementedError):
+            self.skipTest("can't create hard links here")
+        if not os.stat(self.clean).st_ino:
+            self.skipTest("filesystem has no file IDs")
+        for args in (("-s", "-r"), ("-s",)):
+            _code, out = self.run_cli(*args, self.tmp.name)
+            lines = [line for line in out.splitlines()
+                     if "clean.elf" in line or "hard.elf" in line]
+            self.assertEqual(len(lines), 1, (args, out))
 
 
 @unittest.skipUnless(os.path.isfile("/bin/ls") and ee.is_elf("/bin/ls"),
@@ -578,12 +584,30 @@ class RealBinaryTests(unittest.TestCase):
         self.assertTrue(any(s.name == ".text" for s in rep.sections))
 
     @unittest.skipUnless(shutil.which("upx"), "upx not installed")
-    def test_upx_packed_ls(self):
+    def test_upx_packed_system_binary(self):
+        # UPX refuses some binaries (e.g. ones built in ways it doesn't
+        # support), so pack the first standard program it accepts.
+        candidates = ["/bin/ls", "/bin/bash", "/usr/bin/env", "/bin/cat",
+                      "/usr/bin/gzip"]
+        errors = []
         with tempfile.TemporaryDirectory() as d:
-            out = os.path.join(d, "ls_upx")
-            subprocess.run(["upx", "-q", "-o", out, "/bin/ls"], check=True,
-                           capture_output=True, timeout=120)
-            rep = ee.analyze(out)
+            for src in candidates:
+                src = os.path.realpath(src)
+                if not (os.path.isfile(src) and ee.is_elf(src)):
+                    continue
+                plain = os.path.join(d, os.path.basename(src))
+                packed = plain + "_upx"
+                shutil.copy(src, plain)
+                res = subprocess.run(["upx", "-q", "-o", packed, plain],
+                                     capture_output=True, timeout=120)
+                if res.returncode == 0:
+                    break
+                errors.append(f"{src}: {res.stderr.decode(errors='replace').strip()}")
+            else:
+                self.skipTest("upx couldn't pack any test binary: "
+                              + " | ".join(errors))
+            self.assertEqual(ee.analyze(plain).verdict, "clean")
+            rep = ee.analyze(packed)
         self.assertEqual(rep.verdict, "likely packed/encrypted")
         self.assertIn("packer_signature", cats(rep))
 

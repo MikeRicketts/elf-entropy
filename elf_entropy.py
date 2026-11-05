@@ -891,6 +891,10 @@ def iter_targets(paths: list[str], recursive: bool, errors: list[str]):
                 if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
                     continue
                 st = entry.stat(follow_symlinks=False)
+                if not st.st_ino:
+                    # Windows directory listings leave the file ID at 0;
+                    # a full stat fills it in, so hard links are caught.
+                    st = os.stat(entry.path, follow_symlinks=False)
             except OSError as e:
                 errors.append(f"{entry.path}: {e.strerror or e}")
                 continue
