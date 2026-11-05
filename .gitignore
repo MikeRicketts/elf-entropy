@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Reports and local samples (don't commit binaries)
+*.json
+samples/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
