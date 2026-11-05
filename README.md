@@ -169,7 +169,7 @@ python test_elf_entropy.py -v
 
 The tests build ELF files in memory, so they need no sample binaries. On Linux
 they also check `/bin/ls` and, if `upx` is installed, a UPX-packed copy of it.
-GitHub Actions runs them on Linux and Windows for Python 3.9–3.13.
+GitHub Actions runs them on Linux and Windows for Python 3.9–3.14.
 
 ## License
 
